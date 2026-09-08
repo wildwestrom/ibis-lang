@@ -1,0 +1,14 @@
+name = "ibis"
+version = "0.1.0"
+defaultTargets = ["ibis", "ibisTests"]
+
+[[lean_lib]]
+name = "Ibis"
+
+[[lean_exe]]
+name = "ibis"
+root = "Main"
+
+[[lean_exe]]
+name = "ibisTests"
+root = "Tests"

@@ -1,0 +1,7 @@
+-- Runnable with: lake exe ibis check example/lean-core.ibis
+def identity (A : Type u) (x : A) : A := x
+def constant (A : Type u) (B : Type u) (x : A) (y : B) : A := x
+def add (x : Int) (y : Int) : Int := x + y
+def answer : Int := add 20 22
+def choose (b : Bool) (x : Int) (y : Int) : Int := if b then x else y
+def chosen : Int := choose true answer 0

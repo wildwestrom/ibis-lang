@@ -1,11 +1,34 @@
 # Ibis
 
-Ibis is a dependently typed language with a syntax inspired by Lean and Agda built on top 
-of the Calculus of Inductive Constructions (CIC). It extends the CIC with additional constructs for working with presheaves and sheaves and embeds a full compile-time topos
-engine as a 'compile-time borrow checker' to reason about memory safety.
+Ibis is an experimental dependently typed language with syntax inspired by Lean
+and Agda. It aims to extend the Calculus of Inductive Constructions with
+presheaves and sheaves, using a compile-time topos engine to reason about memory
+safety. The topos engine and C99 backend are still preliminary architecture.
 
 It is a highly experimental language and targets embedded devices which otherwise would
 be limited to C99.
+
+## Lean 4 port
+
+A standalone Lean implementation lives in `Ibis/`, with a CLI in `Main.lean`.
+It uses Lean's standard library and the version pinned in `lean-toolchain`.
+The original Haskell implementation remains in `src/` for comparison.
+
+```sh
+lake build
+lake exe ibisTests
+lake exe ibis check example/lean-core.ibis
+lake exe ibis eval '(fun x => x + 1) 41'
+lake exe ibis type '(fun A => fun x => x : (A : Type u) -> A -> A)'
+lake exe ibis elab example/lean-data.ibis
+```
+
+With GHC and Python installed, `python3 test/lean-parity.py` compares the two
+evaluators on shared working cases. See [LEAN_PORT.md](LEAN_PORT.md) for the
+module mapping, syntax, deliberate corrections, and remaining limitations.
+The reference commit and upstream review workflow are recorded in [UPSTREAM.md](UPSTREAM.md).
+In particular, elaborating an inductive declaration does not certify it:
+inductive checking, tactics, full unification, and C99 generation remain unfinished.
 
 ## Current TODOs
 - Fully implement Millers Higher Order Pattern Unification algorithm (`Ibis.Typecheck.Unify.Solver`)
@@ -15,6 +38,7 @@ be limited to C99.
   for proving theorems and constructing terms.
 
 ## AI Transparency
-Large Language Models (LLMs) are used solely as a tool to assist with the following tasks:
+Large Language Models (LLMs) are used as a tool to assist with the following tasks:
 - *Paper Translation*: Decompiling dense, cryptic papers into reference algorithms for implementation.
 - *Documentation*: Assisting with formatting and writing documentation for the code-base.
+- *Implementation*: Translating the prototype to Lean and adding regression tests.

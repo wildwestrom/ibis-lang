@@ -27,5 +27,8 @@ cabal.project.local~
 .ghc.environment.*
 
 # End of https://www.toptal.com/developers/gitignore/api/haskell
-/.direnv
-/.envrc
+.direnv/
+.envrc/
+
+### Lean 4 ###
+.lake/

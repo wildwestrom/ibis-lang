@@ -1,0 +1,15 @@
+-- Data declarations elaborate; positivity/recursor checking is not implemented.
+-- Runnable with: lake exe ibis elab example/lean-data.ibis
+struct Point where
+  x : Int
+  y : Int
+
+struct Box (A : Type u) where
+  value : A
+
+inductive List (A : Type u) : Type u where
+  Nil : List A
+  Cons : A -> List A -> List A
+
+site Memory where
+  cover @Heap has {@Left, @Right}
