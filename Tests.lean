@@ -134,14 +134,58 @@ private def cases : List (String × Except String Unit) := [
   ("finite covers and gluing", do
     let site : Topology.GrothendieckSite Nat := ⟨⟨fun _ => true⟩⟩
     let sieve : Topology.Sieve Nat 0 := ⟨fun a => match a with | .id => true | _ => false⟩
-    let candidates : List (Topology.CoveringArrow Nat 0) := [⟨0, .id⟩, ⟨1, .inclusion⟩]
-    let chunk ← Topology.generateChunk site (3, 7, 2) (.base (42 : Nat)) candidates sieve
+    let candidates : List (Topology.CoveringArrow Nat 0) := [⟨0, .id⟩, ⟨1, .inclusion ⟨1, 2, 3⟩⟩]
+    let chunk ← Topology.generateChunk site ⟨3, 7, 2⟩ (.base (42 : Nat)) candidates sieve
     require "filtered cover" (chunk.coverage.arrows.length == 1 && chunk.coverage.depth == 7)
     let badSite : Topology.GrothendieckSite Nat := ⟨⟨fun _ => false⟩⟩
-    rejects "invalid cover" (Topology.generateChunk badSite (0, 0, 0) (.base (0 : Nat)) candidates sieve)
+    rejects "invalid cover" (Topology.generateChunk badSite ⟨0, 0, 0⟩ (.base (0 : Nat)) candidates sieve)
     let p : Topology.Presheaf Nat := ⟨fun _ => Nat, fun _ x => x⟩
-    require "agreement" ((Topology.glue p (u := 0) (v := 1) (w := 2) .inclusion .inclusion 3 3).isSome)
-    require "disagreement" ((Topology.glue p (u := 0) (v := 1) (w := 2) .inclusion .inclusion 3 4).isNone))
+    require "agreement" ((Topology.glue p (u := 0) (v := 1) (w := 2) (.inclusion ⟨0, 0, 0⟩) (.inclusion ⟨0, 0, 0⟩) 3 3).isSome)
+    require "disagreement" ((Topology.glue p (u := 0) (v := 1) (w := 2) (.inclusion ⟨0, 0, 0⟩) (.inclusion ⟨0, 0, 0⟩) 3 4).isNone)),
+  ("world generation and local sections", do
+    let site : Topology.GrothendieckSite Nat := ⟨⟨fun _ => true⟩⟩
+    let world ← Topology.generateWorld (c := 0) (Val := Nat) site (2, 2, 2)
+    require "coordinate order" (world.chunks.map (·.coord) ==
+      [⟨0, 0, 0⟩, ⟨0, 0, 1⟩, ⟨0, 1, 0⟩, ⟨0, 1, 1⟩,
+       ⟨1, 0, 0⟩, ⟨1, 0, 1⟩, ⟨1, 1, 0⟩, ⟨1, 1, 1⟩])
+    require "empty sections and covers" (world.chunks.all fun chunk =>
+      chunk.coverage.depth == Int.ofNat chunk.coord.y.toNat && chunk.coverage.arrows.isEmpty &&
+        match chunk.payload with | .empty => true | _ => false)
+    require "missing chunk" ((Topology.chunkAt world ⟨2, 0, 0⟩).isNone)
+    let pos : Spatial.LocalPos := ⟨1, 2, 3⟩
+    match Topology.sectionIn world ⟨1, 1, 1⟩ (Topology.localRestriction (target := 1) pos) with
+    | some (.restrict (.inclusion p) .empty) => require "position preserved" (p == pos)
+    | _ => throw "expected restricted empty section"
+    require "missing section" ((Topology.sectionIn world ⟨9, 0, 0⟩ (.id)).isNone)
+    for size in [(0, 2, 2), (2, 0, 2), (2, 2, 0), (4294967295, 0, 1)] do
+      require "zero dimension" ((← Topology.generateWorld (c := 0) (Val := Nat) site size).chunks.isEmpty)
+    let badSite : Topology.GrothendieckSite Nat := ⟨⟨fun _ => false⟩⟩
+    rejects "world cover" (Topology.generateWorld (c := 0) (Val := Nat) badSite (1, 1, 1))
+    let a : Topology.Arrow Nat 0 1 := .inclusion pos
+    require "same arrow" ((Topology.eqArrow a a).isSome)
+    require "different position" ((Topology.eqArrow a (.inclusion (v := 1) ⟨1, 2, 4⟩)).isNone)
+    require "different target" ((Topology.eqArrow a (.inclusion (v := 2) pos)).isNone)
+    let composed : Topology.Arrow Nat 0 2 := Topology.localComposition 1 pos ⟨4, 5, 6⟩
+    match Topology.restrictSection composed (.base (42 : Nat)) with
+    | .restrict (.inclusion p) (.restrict (.inclusion q) (.base n)) =>
+      require "composition order" (p == pos && q == ⟨4, 5, 6⟩ && n == 42)
+    | _ => throw "expected composed restriction"),
+  ("chunk wire format", do
+    let chunk : Serialization.SerializedChunk := ⟨-1, 2, -3, 4, #[0x0102030405060708], ⟨#[0, 255]⟩⟩
+    let bytes ← Serialization.serializeChunk chunk
+    let expected : ByteArray := ⟨#[73, 66, 73, 83, 255, 255, 255, 255,
+      2, 0, 0, 0, 253, 255, 255, 255, 4, 0, 0, 0, 1, 0, 0, 0,
+      8, 7, 6, 5, 4, 3, 2, 1, 2, 0, 0, 0, 0, 255]⟩
+    require "little-endian layout" (bytes == expected)
+    require "decode golden bytes" ((← Serialization.deserializeChunk expected) == chunk)
+    require "trailing bytes match upstream" ((← Serialization.deserializeChunk (bytes ++ ⟨#[99]⟩)) == chunk)
+    for i in [:bytes.size] do
+      rejects "truncated chunk" (Serialization.deserializeChunk (bytes.extract 0 i))
+    rejects "bad magic" (Serialization.deserializeChunk (bytes.set! 0 0))
+    let oversized := (((bytes.set! 20 255).set! 21 255).set! 22 255).set! 23 255
+    rejects "oversized arrow count" (Serialization.deserializeChunk oversized)
+    let oversized := (((bytes.set! 32 255).set! 33 255).set! 34 255).set! 35 255
+    rejects "oversized payload" (Serialization.deserializeChunk oversized))
 ]
 
 def main : IO UInt32 := do

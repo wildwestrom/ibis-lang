@@ -1,11 +1,13 @@
-import Std
+import Ibis.Spatial
 
 namespace Ibis.Topology
+
+open Ibis.Spatial
 
 /-- The prototype's indexed syntax of identity, inclusion, and composition arrows. -/
 inductive Arrow (Obj : Type) : Obj → Obj → Type where
   | id : Arrow Obj u u
-  | inclusion : Arrow Obj u v
+  | inclusion : LocalPos → Arrow Obj u v
   | comp : Arrow Obj v w → Arrow Obj u v → Arrow Obj u w
 
 def Arrow.compose (g : Arrow Obj v w) (f : Arrow Obj u v) : Arrow Obj u w :=
@@ -53,13 +55,14 @@ theorem pullback_maximal (g : Arrow Obj d c) :
     pullbackSieve g maximalSieve = maximalSieve := rfl
 
 inductive Section (Val : Type) {Obj : Type} : Obj → Type where
+  | empty : Section Val u
   | base : Val → Section Val u
   | restrict : Arrow Obj u v → Section Val v → Section Val u
 
 def restrictSection (a : Arrow Obj u v) (s : Section Val v) : Section Val u :=
   match a with
   | .id => s
-  | .inclusion => .restrict .inclusion s
+  | .inclusion pos => .restrict (.inclusion pos) s
   | .comp g f => restrictSection f (restrictSection g s)
 
 structure Presheaf (Obj : Type) where
@@ -109,23 +112,68 @@ structure FiniteCover (Obj : Type) (c : Obj) where
 
 abbrev SectorCoord := Int × Int × Int
 
-structure VoxelChunk (Obj : Type) (c : Obj) (Val : Type) where
-  coord : SectorCoord
+structure WorldChunk (Obj : Type) (c : Obj) (Val : Type) where
+  coord : ChunkPos
   coverage : FiniteCover Obj c
   payload : Section Val c
 
+/-- Compatibility name for the previous chunk type. -/
+abbrev VoxelChunk := WorldChunk
+
+structure Region (Obj : Type) (c : Obj) (Val : Type) where
+  chunks : List (WorldChunk Obj c Val)
+  chunkCount : Nat
+
 structure World (Obj : Type) (c : Obj) (Val : Type) where
   site : GrothendieckSite Obj
-  chunks : List (VoxelChunk Obj c Val)
+  chunks : List (WorldChunk Obj c Val)
 
 def materializeSieve (depth : Int) (candidates : List (CoveringArrow Obj c)) (s : Sieve Obj c) :
     FiniteCover Obj c :=
   ⟨depth, candidates.filter fun a => s.contains a.arrow⟩
 
-def generateChunk (site : GrothendieckSite Obj) (coord : SectorCoord) (payload : Section Val c)
-    (candidates : List (CoveringArrow Obj c)) (sieve : Sieve Obj c) : Except String (VoxelChunk Obj c Val) :=
+def generateChunk (site : GrothendieckSite Obj) (coord : ChunkPos) (payload : Section Val c)
+    (candidates : List (CoveringArrow Obj c)) (sieve : Sieve Obj c) : Except String (WorldChunk Obj c Val) :=
   if isCoveringSieve site sieve then
-    .ok ⟨coord, materializeSieve coord.2.1 candidates sieve, payload⟩
+    .ok ⟨coord, materializeSieve (Int.ofNat coord.y.toNat) candidates sieve, payload⟩
   else .error "sieve does not cover the chunk's spatial index object"
+
+def localRestriction (pos : LocalPos) : Arrow Obj target c := .inclusion pos
+
+def localComposition (middle : Obj) (pos₁ pos₂ : LocalPos) : Arrow Obj target c :=
+  .comp (.inclusion (u := middle) pos₂) (.inclusion pos₁)
+
+/-- Compare arrow syntax without deriving any equality of object indices. -/
+def Arrow.samePath (a : Arrow Obj u v) (b : Arrow Obj u' v') : Bool :=
+  match a, b with
+  | .id, .id => true
+  | .inclusion p, .inclusion q => p == q
+  | .comp g f, .comp g' f' => g.samePath g' && f.samePath f'
+  | _, _ => false
+
+/-- Unlike upstream's unsafe cast, target equality must be checked independently. -/
+def eqArrow [DecidableEq Obj] (a : Arrow Obj u v) (b : Arrow Obj u w) : Option (PLift (v = w)) :=
+  if h : v = w then if a.samePath b then some ⟨h⟩ else none else none
+
+def chunkAt (world : World Obj c Val) (coord : ChunkPos) : Option (WorldChunk Obj c Val) :=
+  world.chunks.find? fun chunk => chunk.coord == coord
+
+def sectionIn (world : World Obj c Val) (coord : ChunkPos) (arrow : Arrow Obj target c) :
+    Option (Section Val target) :=
+  (chunkAt world coord).map fun chunk => .restrict arrow chunk.payload
+
+/-- Zero in any dimension produces an empty world; dimensions never wrap on subtraction. -/
+def generateWorld (site : GrothendieckSite Obj) (size : UInt32 × UInt32 × UInt32) :
+    Except String (World Obj c Val) := do
+  let (width, height, depth) := size
+  if width == 0 || height == 0 || depth == 0 then return ⟨site, []⟩
+  let mut chunks := []
+  for x in [:width.toNat] do
+    for y in [:height.toNat] do
+      for z in [:depth.toNat] do
+        let chunk ← generateChunk site ⟨x.toUInt32, y.toUInt32, z.toUInt32⟩
+          (.empty : Section Val c) [] maximalSieve
+        chunks := chunk :: chunks
+  return ⟨site, chunks.reverse⟩
 
 end Ibis.Topology

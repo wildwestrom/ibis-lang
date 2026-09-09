@@ -18,3 +18,15 @@ for fixture in fixtures:
     if actual != expected:
         raise AssertionError(f"{source}: Haskell={expected!r}, Lean={actual!r}")
 print(f"{len(fixtures)} Haskell/Lean evaluator comparisons passed")
+
+haskell_chunks = subprocess.run(
+    ["runghc", "-isrc", "test/ChunkParity.hs"],
+    cwd=root, check=True, text=True, capture_output=True,
+).stdout.splitlines()
+lean_chunks = subprocess.run(
+    ["lake", "env", "lean", "--run", "test/ChunkParity.lean"],
+    cwd=root, check=True, text=True, capture_output=True,
+).stdout.splitlines()
+if len(haskell_chunks) != 3 or lean_chunks != haskell_chunks:
+    raise AssertionError(f"Chunk format mismatch: Haskell={haskell_chunks!r}, Lean={lean_chunks!r}")
+print(f"{len(haskell_chunks)} Haskell/Lean chunk wire-format comparisons passed")

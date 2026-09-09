@@ -18,8 +18,9 @@ python3 test/lean-parity.py  # optional: also requires GHC/runghc and Python 3
 `lake build` builds the library, CLI, and test executable. `ibisTests` runs the
 regressions; a parse failure fails a test rather than skipping its assertions.
 The parity script compares Lean with the original Haskell evaluator on 13
-working cases. It does not claim parity for unfinished or erroneous Haskell
-paths. It uses the original modules directly, avoiding the historical Cabal
+working cases, plus three byte-for-byte chunk serialization fixtures (including
+signed bounds and 64-bit arrow IDs). It does not claim parity for unfinished or
+erroneous Haskell paths. It uses the original modules directly, avoiding the historical Cabal
 test suite's stale `Ibis.Syntax.*` imports and unavailable test dependencies.
 
 Commands return nonzero on errors:
@@ -48,7 +49,8 @@ type-soundness proof.
 | `Ibis.Typecheck.Check` | `Ibis/Check.lean` |
 | Substitution and free-variable helpers | `Ibis/Core.lean` |
 | `Ibis.Typecheck.Unify.*` | `Ibis/Unify.lean` |
-| `Category.*`, `Ibis.Compiler.WorldGen` | `Ibis/Topology.lean` |
+| `Category.*`, `Ibis.Compiler.World`, `Ibis.Compiler.WorldGen` | `Ibis/Topology.lean` |
+| `Data.Serialization` | `Ibis/Serialization.lean` |
 | `Ibis.AST.CoAST`, `CFG` | `Ibis/Spatial.lean` |
 | Placeholder `app/Main.hs` | Functional CLI in `Main.lean` |
 
@@ -138,11 +140,16 @@ inconsistent. Its regression tests explicitly cover:
 * Gluing checks overlap agreement and returns the two local sections; it does
   not synthesize a global section. Left Kan extensions are existential containers:
   a contravariant presheaf alone cannot supply a covariant extension operation.
+* World generation, chunk lookup, and local section restriction are executable.
+  Zero-sized worlds are empty. Chunk serialization matches the upstream binary
+  format, but arrow IDs and section payload bytes remain opaque; no world-to-wire
+  conversion exists. Upstream's STM server queue scaffold is deferred.
 * Spatial ASTs and CFGs are data structures only. Streaming, disk caches, a
   borrow-checking topos engine, and C99 lowering remain unimplemented.
 
 ## Reversibility
 
-The Haskell source and Cabal configuration are unchanged. Both builds can coexist:
+The Haskell source and Cabal configuration match the reference in `UPSTREAM.md`;
+they are refreshed together when the baseline advances. Both builds can coexist:
 Lean uses `.lake/`, Haskell uses `dist-newstyle/`. Continue using Cabal to return
 to the original implementation; no source or data migration is required.

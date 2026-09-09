@@ -8,11 +8,14 @@ structure ChunkPos where
   z : UInt32
   deriving Repr, BEq, Inhabited
 
-structure LocalCoord where
+structure LocalPos where
   x : UInt8
   y : UInt8
   z : UInt8
   deriving Repr, BEq, Inhabited
+
+/-- Compatibility name for the previous spatial API. -/
+abbrev LocalCoord := LocalPos
 
 structure Coord where
   chunk : ChunkPos
