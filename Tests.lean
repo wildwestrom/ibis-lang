@@ -185,8 +185,34 @@ private def cases : List (String × Except String Unit) := [
     require "floor negative coordinates" (pos == ⟨4294967295, 0, 1⟩)
     rejects "nonfinite movement" (Debugger.parsePosition (Debugger.be 8 0x7ff0000000000000 ++ Debugger.be 16 0))
     let origin := Debugger.chunkBuffer ⟨0, 0, 0⟩
-    require "nine neighbors" (origin.length == 9 && origin.contains ⟨4294967295, 0, 4294967295⟩)
-    require "three entering chunks" (((Debugger.chunkBuffer ⟨1, 0, 0⟩).filter (!origin.contains ·)).length == 3)),
+    require "bedrock neighbors" (origin.length == 18 && origin.contains ⟨4294967295, 0, 4294967295⟩)
+    require "six entering sections" (((Debugger.chunkBuffer ⟨1, 0, 0⟩).filter (!origin.contains ·)).length == 6)),
+  ("vertical debugger and play packets", do
+    require "middle sections" (Debugger.verticalSections 3 == [2, 3, 4])
+    require "bedrock sections" (Debugger.verticalSections 0 == [0, 1])
+    require "ceiling sections" (Debugger.verticalSections 15 == [14, 15])
+    require "out of range sections" ((Debugger.verticalSections 4294967295).isEmpty)
+    require "27 nearby sections" ((Debugger.chunkBuffer ⟨0, 3, 0⟩).length == 27)
+    for (y, expected) in [(-1.0, 0), (64.0, 4), (255.0, 15), (512.0, 15)] do
+      let pos ← Debugger.parsePosition (Debugger.be 8 0 ++ Debugger.be 8 y.toBits.toNat ++ Debugger.be 8 0)
+      require "vertical position" (pos.y == expected)
+    require "packed negative position" (Debugger.packPosition (-1) (-1) (-1) == Debugger.be 8 18446744073709551615)
+    let chunk : Topology.WorldChunk Unit () String := ⟨⟨0, 0, 0⟩, ⟨0, []⟩, .empty⟩
+    for y in [0, 3, 4, 15] do
+      let bytes ← Debugger.encodeWorldChunk { chunk with coord.y := y }
+      let (mask, rest) ← Debugger.decodeVarInt (bytes.extract 9 bytes.size)
+      require "section bitmask" (mask == (1 : UInt32) <<< y)
+      let height ← Debugger.readBE rest 25 8
+      require "section heightmap" (height &&& 511 == (y.toNat + 1) * 16)
+    rejects "invalid section" (Debugger.encodeWorldChunk { chunk with coord.y := 16 })
+    match Debugger.decodePlayPacket ⟨5, ByteArray.empty⟩ with
+    | .clientSettings => pure ()
+    | _ => throw "client settings packet ID"
+    for packet in [⟨0x11, Debugger.be 24 0⟩, ⟨0x12, Debugger.be 25 0⟩,
+        ⟨3, ⟨#[2, 65]⟩⟩, ⟨3, ⟨#[1, 255]⟩⟩, ⟨0x7f, ByteArray.empty⟩] do
+      match Debugger.decodePlayPacket packet with
+      | .unknown _ => pure ()
+      | _ => throw "malformed/unsupported payload was accepted"),
   ("chunk wire format", do
     let chunk : Serialization.SerializedChunk := ⟨-1, 2, -3, 4, #[0x0102030405060708], ⟨#[0, 255]⟩⟩
     let bytes ← Serialization.serializeChunk chunk

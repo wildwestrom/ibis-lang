@@ -149,9 +149,11 @@ inconsistent. Its regression tests explicitly cover:
   format, but arrow IDs and section payload bytes remain opaque; no world-to-wire
   conversion exists. WorldServer requests run through a closeable channel; generated
   chunks are cached and can be explicitly unloaded. The TCP debugger supports
-  protocol 754 status/ping, offline login, and movement-driven chunk streaming.
-  Rendering is a fixed stone platform, independent of section payloads. Keepalives,
-  authentication, automatic cache eviction, and block editing remain unimplemented.
+  protocol 754 status/ping, offline login, escaped system chat, fifteen-second
+  keepalives, and horizontal/vertical movement-driven chunk streaming. The view
+  requests nearby sections within Y=0–15 and renders the center section as stone,
+  independent of section payloads. Multi-section column rendering, authentication,
+  automatic cache eviction, and block editing remain unimplemented.
   Socket tests exercise the wire protocol; a real Minecraft client was not tested.
 * Spatial ASTs and CFGs are data structures only. Streaming, disk caches, a
   borrow-checking topos engine, and C99 lowering remain unimplemented.

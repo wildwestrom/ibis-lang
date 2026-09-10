@@ -1,3 +1,4 @@
+import Lean.Data.Json.Printer
 import Ibis.Debugger.NBT
 import Ibis.Topology
 
@@ -62,12 +63,51 @@ def parsePosition (bytes : ByteArray) : Except String ChunkPos := do
   let cz := (z / 16).floor
   if cx < -2147483648 || cx > 2147483647 || cz < -2147483648 || cz > 2147483647 then
     throw "position exceeds signed chunk coordinates"
-  return ⟨cx.toInt64.toUInt64.toUInt32, 0, cz.toInt64.toUInt64.toUInt32⟩
+  -- Clamp the view to the sixteen protocol-754 sections, including below bedrock.
+  let cy := (max 0 (min 15 (y / 16).floor)).toUInt32
+  return ⟨cx.toInt64.toUInt64.toUInt32, cy, cz.toInt64.toUInt64.toUInt32⟩
+
+def verticalSections (centerY : UInt32) : List UInt32 :=
+  (List.range 16).filterMap fun y =>
+    if y + 1 >= centerY.toNat && y <= centerY.toNat + 1 then some y.toUInt32 else none
 
 def chunkBuffer (center : ChunkPos) : List ChunkPos :=
   ([-1, 0, 1] : List Int).flatMap fun dx =>
-    ([-1, 0, 1] : List Int).map fun dz =>
-      ⟨center.x + (UInt32.ofInt dx), 0, center.z + (UInt32.ofInt dz)⟩
+    (verticalSections center.y).flatMap fun y =>
+      ([-1, 0, 1] : List Int).map fun dz =>
+        ⟨center.x + UInt32.ofInt dx, y, center.z + UInt32.ofInt dz⟩
+
+/-- Unsupported or malformed play payloads are ignored, not interpreted as EOF. -/
+inductive PlayPacket where
+  | teleportConfirmed : UInt32 → PlayPacket
+  | chatReceived : String → PlayPacket
+  | position : ChunkPos → PlayPacket
+  | clientSettings
+  | unknown : Packet → PlayPacket
+
+def decodePlayPacket (packet : Packet) : PlayPacket :=
+  let decoded : Except String PlayPacket := do
+    match packet.id with
+    | 0 => return .teleportConfirmed (← decodeVarInt packet.payload).1
+    | 3 =>
+      let (bytes, _) ← decodeString packet.payload
+      let some text := String.fromUTF8? bytes | throw "invalid UTF-8 chat"
+      return .chatReceived text
+    | 5 => return .clientSettings
+    | 0x11 | 0x12 =>
+      let required := if packet.id == 0x11 then 25 else 33
+      if packet.payload.size < required then throw "truncated movement"
+      return .position (← parsePosition packet.payload)
+    | _ => return .unknown packet
+  decoded.toOption.getD (.unknown packet)
+
+def packPosition (x y z : Int32) : ByteArray :=
+  let bits := ((x.toUInt32.toUInt64 &&& 0x3ffffff) <<< 38) |||
+    ((z.toUInt32.toUInt64 &&& 0x3ffffff) <<< 12) ||| (y.toUInt32.toUInt64 &&& 0xfff)
+  be 8 bits.toNat
+
+def systemChatMessage (text : String) : ByteArray :=
+  mcString (Lean.Json.mkObj [("text", .str text)]).compress ++ byte 1 ++ ⟨Array.replicate 16 0⟩
 
 def overworldAttributes : NBT := .compound [
   ("piglin_safe", .byte 0), ("natural", .byte 1), ("coordinate_scale", .float 1),
@@ -95,15 +135,16 @@ def buildDimensionCodec : Except String ByteArray := buildRootNBT "" (.compound 
 def buildJoinGame : Except String ByteArray := do
   return be 4 0 ++ ⟨#[0, 1, 255, 1]⟩ ++ mcString "minecraft:overworld" ++
     (← buildDimensionCodec) ++ (← buildRootNBT "" overworldAttributes) ++
-    mcString "minecraft:overworld" ++ be 8 0 ++ ⟨#[0, 1, 0, 1, 0, 1]⟩
+    mcString "minecraft:overworld" ++ be 8 0 ++ ⟨#[1, 1, 1, 1, 0, 1]⟩
 
 /-- Upstream's placeholder stone platform; section payloads do not yet affect rendering. -/
 def encodeWorldChunk (chunk : WorldChunk Obj c Val) : Except String ByteArray := do
-  if chunk.coord.y != 0 then throw "debugger only supports chunks at y=0"
-  let height : UInt64 := (List.range 7).foldl (fun n i => n ||| ((64 : UInt64) <<< (i * 9).toUInt64)) 0
+  if chunk.coord.y > 15 then throw "debugger section must be between 0 and 15"
+  let top := (chunk.coord.y.toUInt64 + 1) * 16
+  let height : UInt64 := (List.range 7).foldl (fun n i => n ||| (top <<< (i * 9).toUInt64)) 0
   let heights ← buildRootNBT "" (.compound [("MOTION_BLOCKING", .longArray (List.replicate 36 height))])
   let sectionData := be 2 4096 ++ ⟨#[4, 1, 1]⟩ ++ buildVarInt 256 ++ ⟨Array.replicate 2048 0⟩
-  return be 4 chunk.coord.x.toNat ++ be 4 chunk.coord.z.toNat ++ ⟨#[1, 8]⟩ ++ heights ++
+  return be 4 chunk.coord.x.toNat ++ be 4 chunk.coord.z.toNat ++ byte 1 ++ buildVarInt ((1 : UInt32) <<< chunk.coord.y) ++ heights ++
     buildVarInt 1024 ++ ⟨Array.replicate 1024 1⟩ ++ buildVarInt sectionData.size.toUInt32 ++ sectionData ++ byte 0
 
 end Ibis.Debugger

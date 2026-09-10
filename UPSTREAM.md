@@ -5,8 +5,8 @@ The Lean implementation follows the behavior of
 
 ## Baseline
 
-- Reference commit: `30a47127bf30d8fde6878e51613dc6529005735f`
-- Commit subject: `server: Rough debugger, works in sync with WorldServer`
+- Reference commit: `b721f1ad046102e3864add68a7582e1c9416c281`
+- Commit subject: `server: Fixed vertical chunk generation in debugger`
 - Last checked against `upstream/main`: 2026-09-10
 - The Haskell files in `src/` match this commit.
 
@@ -28,7 +28,7 @@ as part of this setup. When it exists, rename the current `origin` to
 
 ```sh
 jj git fetch --remote upstream
-jj log -r '30a47127bf30d8fde6878e51613dc6529005735f..main@upstream'
+jj log -r 'b721f1ad046102e3864add68a7582e1c9416c281..main@upstream'
 ```
 
 Keep `main@upstream` untracked in Jujutsu so fetching Haskell changes does not
@@ -42,7 +42,42 @@ after running `lake build`, `lake exe ibisTests`, and
 alone does not advance the port's baseline. Upstream commits should not be
 automatically merged into the Lean implementation.
 
-## Ported through `30a47127`
+## Ported through `b721f1a`
+
+Ported `fe7c166` (protocol cleanup, chat, keepalives) and `b721f1a` (vertical
+sections). The Haskell source, executable entry point, and Cabal file match this
+baseline. Lean already separated protocol encoding from server coordination;
+it now decodes typed play events, echoes chat as escaped JSON system messages,
+and sends an increasing 64-bit keepalive every fifteen seconds after login.
+The keepalive timer is cancelled when the connection's play session ends.
+Join Game now advertises one player and reduced debug information.
+
+WorldServer requests cover a 3×3 horizontal view and the center Y section plus
+its neighbors, limited to sections 0–15. Login starts with center section 3.
+The encoder uses the section's bitmask and heightmap rather than a fixed Y=0
+coordinate and Y=64 surface. Like upstream, only the center section is rendered
+per X/Z column; combining multiple sections into one column remains unfinished.
+
+Additional intentional corrections:
+
+- Vertical movement resends the new center section even when it was already
+  prefetched. Upstream only sends entering sections, which can leave the visible
+  column unchanged after moving vertically.
+- Movement outside the vertical world bounds clamps the view center to 0–15
+  rather than wrapping negative Y to Word32 and producing an empty view.
+- Malformed or unsupported play packets remain ignorable. Position-and-look
+  packets require both angles and the on-ground field; invalid UTF-8 chat and
+  non-finite movement are ignored.
+- JSON escaping uses Lean's existing JSON printer. Packet writes submit complete
+  frames through the standard library's TCP queue, including keepalive writes.
+
+Validation: `lake build`, `lake exe ibisTests` (23 groups),
+`python3 test/lean-parity.py` (19 comparisons), and
+`python3 test/debugger-socket.py` (including vertical-only movement, bedrock and
+ceiling limits, chat escaping, and keepalive delivery during a partial inbound
+frame) passed. No real Minecraft client or Haskell network executable was tested.
+
+## Previously ported through `30a47127`
 
 Fetched and reviewed `19b7dac` (WorldServer polling) and `30a4712` (debugger).
 The Haskell `src/`, `app/Main.hs`, Cabal configuration, and semantics TeX source
@@ -72,9 +107,9 @@ Intentional corrections:
 - Lean retains the older `Region`, `CoChunk`, and `CoWorld` records as compatibility
   types after upstream removed them; the debugger uses `WorldChunk`.
 
-Like upstream, this remains a prototype: chunks render a fixed stone platform,
-not section values; there is no authentication, keepalive protocol, automatic
-cache eviction, block editing, or full Minecraft server implementation. A real
+At this baseline, chunks rendered a fixed stone platform, not section values;
+authentication, keepalives, automatic cache eviction, block editing, and a full
+Minecraft server implementation were absent. Keepalives are now ported above. A real
 Minecraft client session has not been tested. The Haskell network executable
 was not built (the installed GHC environment lacks `network`).
 

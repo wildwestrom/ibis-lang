@@ -1,6 +1,7 @@
 import Ibis.Debugger.Protocol
 import Ibis.WorldServer
 import Std.Async.TCP
+import Std.Async.Timer
 
 namespace Ibis.Debugger
 open Std.Async Spatial Topology
@@ -32,13 +33,34 @@ private def sendPacket (sock : TCP.Socket.Client) (id : UInt32) (payload : ByteA
   sock.send (← checked (encodePacket ⟨id, payload⟩))
 
 private def streamChunks (sock : TCP.Socket.Client) (queue : WorldServer.Queue Obj c Val)
-    (center : ChunkPos) (loaded : List ChunkPos) : Async (List ChunkPos) := do
+    (center : ChunkPos) (loaded : List ChunkPos) (resendCenter := false) : Async (List ChunkPos) := do
   let desired := chunkBuffer center
   for pos in desired do
-    if !loaded.contains pos then
+    if !loaded.contains pos || (resendCenter && pos.y == center.y) then
       let chunk ← WorldServer.requestChunk queue pos
-      sendPacket sock 0x20 (← checked (encodeWorldChunk chunk))
+      -- Request all nearby sections, but render only the center section per column.
+      if pos.y == center.y then
+        sendPacket sock 0x20 (← checked (encodeWorldChunk chunk))
   return desired
+
+/-- The stop channel cancels the timer when the play session ends. Each socket send
+    submits one complete frame to the standard library's queued TCP writer. -/
+private def withKeepAlives (sock : TCP.Socket.Client) (action : Async Unit) : Async Unit := do
+  let stop : Std.CloseableChannel Unit ← Std.CloseableChannel.new
+  let worker ← (do
+    let mut id : UInt64 := 0
+    repeat
+      let timer ← Selector.sleep 15000
+      let stopped ← Selectable.one #[
+        .case stop.recvSelector (fun _ => pure true),
+        .case timer (fun _ => pure false)]
+      if stopped then break
+      sendPacket sock 0x1f (be 8 id.toNat)
+      id := id + 1 : Async Unit).toIO
+  try action
+  finally
+    stop.close
+    discard <| Async.ofAsyncTask worker
 
 private def handleLogin (sock : TCP.Socket.Client) (server : WorldServer.Server Obj c Val)
     (queue : WorldServer.Queue Obj c Val) : Async Unit := do
@@ -49,22 +71,28 @@ private def handleLogin (sock : TCP.Socket.Client) (server : WorldServer.Server 
   sendPacket sock 2 (⟨Array.replicate 16 0⟩ ++ buildVarInt username.size.toUInt32 ++ username)
   sendPacket sock 0x24 (← checked buildJoinGame)
   sendPacket sock 0x40 ⟨#[0, 0]⟩
-  sendPacket sock 0x42 (be 8 64)
+  sendPacket sock 0x42 (packPosition 0 64 0)
   sendPacket sock 0x34 (be 8 0 ++ be 8 (64.0 : Float).toBits.toNat ++ be 8 0 ++ be 8 0 ++ ⟨#[0, 1]⟩)
   let confirm ← readPacket sock
   let (teleport, _) ← checked (decodeVarInt confirm.payload)
   if confirm.id != 0 || teleport != 1 then throw (IO.userError "expected teleport confirmation")
-  let mut center : ChunkPos := ⟨0, 0, 0⟩
-  let mut loaded ← streamChunks sock queue center []
-  repeat
-    let packet ← readPacket sock
-    if packet.id == 0x11 || packet.id == 0x12 then
-      let next ← checked (parsePosition packet.payload)
-      if next != center then
-        center := next
-        WorldServer.setCursor server next
-        sendPacket sock 0x40 (buildVarInt next.x ++ buildVarInt next.z)
-        loaded ← streamChunks sock queue next loaded
+  let initial : ChunkPos := ⟨0, 3, 0⟩
+  let initialLoaded ← streamChunks sock queue initial []
+  withKeepAlives sock do
+    let mut center := initial
+    let mut loaded := initialLoaded
+    repeat
+      let packet ← readPacket sock
+      match decodePlayPacket packet with
+      | .position next =>
+        if next != center then
+          let resendCenter := next.y != center.y
+          center := next
+          WorldServer.setCursor server next
+          sendPacket sock 0x40 (buildVarInt next.x ++ buildVarInt next.z)
+          loaded ← streamChunks sock queue next loaded resendCenter
+      | .chatReceived text => sendPacket sock 0x0e (systemChatMessage text)
+      | _ => pure ()
 
 private def handleConnection (sock : TCP.Socket.Client) (server : WorldServer.Server Obj c Val)
     (queue : WorldServer.Queue Obj c Val) : Async Unit := do
