@@ -5,15 +5,15 @@ The Lean implementation follows the behavior of
 
 ## Baseline
 
-- Reference commit: `4b5194ac2dcb89d894d31f9d5b3bb20af2261d0c`
-- Commit subject: `Chunk serialization`
-- Last checked against `upstream/main`: 2026-09-09
+- Reference commit: `30a47127bf30d8fde6878e51613dc6529005735f`
+- Commit subject: `server: Rough debugger, works in sync with WorldServer`
+- Last checked against `upstream/main`: 2026-09-10
 - The Haskell files in `src/` match this commit.
 
 This identifies the source used for the port, not a claim of complete behavioral
 equivalence. Corrections and unfinished features are documented in
 [LEAN_PORT.md](LEAN_PORT.md). The parity tests cover shared working evaluator cases
-and chunk wire-format fixtures.
+and chunk/NBT wire-format fixtures.
 
 ## Remotes
 
@@ -28,7 +28,7 @@ as part of this setup. When it exists, rename the current `origin` to
 
 ```sh
 jj git fetch --remote upstream
-jj log -r '4b5194ac2dcb89d894d31f9d5b3bb20af2261d0c..main@upstream'
+jj log -r '30a47127bf30d8fde6878e51613dc6529005735f..main@upstream'
 ```
 
 Keep `main@upstream` untracked in Jujutsu so fetching Haskell changes does not
@@ -38,11 +38,52 @@ bookmark remains available for inspection after fetching.
 Review each upstream change, translate relevant behavior, and add regression or
 parity tests. Update the pinned Haskell reference and this baseline together
 after running `lake build`, `lake exe ibisTests`, and
-`python3 test/lean-parity.py`. Record any deferred changes explicitly; fetching
+`python3 test/lean-parity.py`, and `python3 test/debugger-socket.py`. Record any deferred changes explicitly; fetching
 alone does not advance the port's baseline. Upstream commits should not be
 automatically merged into the Lean implementation.
 
-## Ported through `4b5194ac`
+## Ported through `30a47127`
+
+Fetched and reviewed `19b7dac` (WorldServer polling) and `30a4712` (debugger).
+The Haskell `src/`, `app/Main.hs`, Cabal configuration, and semantics TeX source
+are refreshed. Generated paper build artifacts are intentionally not refreshed.
+
+Lean adds `Ibis/WorldServer.lean` and `Ibis/Debugger/{NBT,Protocol,Server}.lean`.
+`lake exe ibis debugger [PORT]` starts the WorldServer worker and TCP debugger
+(default 25545), using only Lean's standard library. The existing interpreter
+commands remain available. Status/ping, offline login, dimension/biome NBT,
+initial nine-chunk view, movement-driven streaming, and negative coordinates
+follow upstream's Minecraft 1.16.5 / protocol 754 implementation. Upstream's
+startup banner incorrectly names 1.20.1; Lean advertises 1.16.5.
+
+Intentional corrections:
+
+- Generated chunks are cached atomically; upstream returns them without insertion.
+  FetchCursor reads the stored cursor instead of returning the origin.
+- A closeable FIFO channel and promises replace STM. Generation errors reach the
+  requester, and closing the queue drains pending requests and stops the worker.
+- View centers are per connection, so one client's movement cannot suppress
+  another client's chunk stream. The shared cursor records the latest movement.
+- Status waits for the status request before replying, so ping echoes correctly.
+  Login checks protocol version and teleport confirmation.
+- Frame sizes, VarInt overflow, truncated fields, non-finite/out-of-range movement,
+  NBT lengths, and homogeneous NBT lists are checked. Unsupported chunk heights
+  return errors rather than panicking.
+- Lean retains the older `Region`, `CoChunk`, and `CoWorld` records as compatibility
+  types after upstream removed them; the debugger uses `WorldChunk`.
+
+Like upstream, this remains a prototype: chunks render a fixed stone platform,
+not section values; there is no authentication, keepalive protocol, automatic
+cache eviction, block editing, or full Minecraft server implementation. A real
+Minecraft client session has not been tested. The Haskell network executable
+was not built (the installed GHC environment lacks `network`).
+
+Validation: `lake build`, `lake exe ibisTests` (22 groups),
+`python3 test/lean-parity.py` (13 evaluator, 3 chunk, and 3 NBT comparisons), and
+`python3 test/debugger-socket.py` (real TCP status/ping, login, exact chunk bytes,
+two-client movement, negative coordinates, malformed frames).
+
+## Previously ported through `4b5194ac`
 
 The Haskell snapshot, Cabal configuration, and `example/vect.ibis` match the
 reference. Lean now supports the chunk wire record, empty sections,
@@ -63,8 +104,8 @@ Intentional differences:
   are ignored, matching upstream. The signed wire coordinates are separate from
   unsigned spatial coordinates; no automatic conversion is introduced.
 
-Deferred: `WorldServer`'s STM request/queue scaffold (upstream has no processing
-loop), and the aspirational list/site syntax added to `vect.ibis`. Serialization
+At this earlier baseline, the WorldServer scaffold was deferred; it is now ported
+as described above. The aspirational list/site syntax added to `vect.ibis` remains deferred. Serialization
 stores opaque arrow IDs and section bytes; connecting them to live world data
 is not implemented upstream or in Lean.
 

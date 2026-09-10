@@ -170,6 +170,23 @@ private def cases : List (String × Except String Unit) := [
     | .restrict (.inclusion p) (.restrict (.inclusion q) (.base n)) =>
       require "composition order" (p == pos && q == ⟨4, 5, 6⟩ && n == 42)
     | _ => throw "expected composed restriction"),
+  ("debugger protocol", do
+    for n in ([0, 127, 128, 255, 2147483647, 2147483648, 4294967295] : List UInt32) do
+      let (decoded, rest) ← Debugger.decodeVarInt (Debugger.buildVarInt n)
+      require "VarInt round trip" (decoded == n && rest.isEmpty)
+    require "negative VarInt" (Debugger.buildVarInt 4294967295 == ⟨#[255, 255, 255, 255, 15]⟩)
+    for bad in [⟨#[128]⟩, ⟨#[255, 255, 255, 255, 16]⟩, ⟨#[128, 128, 128, 128, 128, 0]⟩] do
+      rejects "malformed VarInt" (Debugger.decodeVarInt bad)
+    rejects "truncated string" (Debugger.decodeString ⟨#[3, 65]⟩)
+    rejects "mixed NBT list" (Debugger.buildRootNBT "" (.list 1 [.int 0]))
+    require "UTF8 byte length" ((← Debugger.nbtString "λ") == ⟨#[0, 2, 206, 187]⟩)
+    let pos ← Debugger.parsePosition (Debugger.be 8 (-0.5 : Float).toBits.toNat ++
+      Debugger.be 8 0 ++ Debugger.be 8 (16.0 : Float).toBits.toNat)
+    require "floor negative coordinates" (pos == ⟨4294967295, 0, 1⟩)
+    rejects "nonfinite movement" (Debugger.parsePosition (Debugger.be 8 0x7ff0000000000000 ++ Debugger.be 16 0))
+    let origin := Debugger.chunkBuffer ⟨0, 0, 0⟩
+    require "nine neighbors" (origin.length == 9 && origin.contains ⟨4294967295, 0, 4294967295⟩)
+    require "three entering chunks" (((Debugger.chunkBuffer ⟨1, 0, 0⟩).filter (!origin.contains ·)).length == 3)),
   ("chunk wire format", do
     let chunk : Serialization.SerializedChunk := ⟨-1, 2, -3, 4, #[0x0102030405060708], ⟨#[0, 255]⟩⟩
     let bytes ← Serialization.serializeChunk chunk
@@ -188,11 +205,57 @@ private def cases : List (String × Except String Unit) := [
     rejects "oversized payload" (Serialization.deserializeChunk oversized))
 ]
 
+private def worldServerTests : IO Unit := do
+  let site : Topology.GrothendieckSite Unit := ⟨⟨fun _ => true⟩⟩
+  let server ← WorldServer.initServer site (.base (u := ()) "root") [⟨(), .id⟩] Topology.maximalSieve
+  let queue ← Std.CloseableChannel.new
+  let worker ← IO.asTask (WorldServer.runServer server queue) (prio := .dedicated)
+  try
+    let pos : Spatial.ChunkPos := ⟨4294967295, 0, 2⟩
+    let a ← (WorldServer.requestChunk queue pos).block
+    let b ← (WorldServer.requestChunk queue pos).block
+    unless a.coord == pos && b.coord == pos do throw (IO.userError "chunk reply coordinates")
+    let count ← server.state.atomically do return (← get).world.chunks.length
+    unless count == 1 do throw (IO.userError "generated chunk was not cached")
+    WorldServer.setCursor server pos
+    let reply ← IO.Promise.new
+    discard <| queue.send (.fetchCursor reply)
+    unless (← Std.Async.Async.ofPurePromise (pure reply) |>.block) == pos do
+      throw (IO.userError "cursor reply")
+    discard <| queue.send (.unloadChunk pos)
+    let barrier ← IO.Promise.new
+    discard <| queue.send (.fetchCursor barrier)
+    discard <| (Std.Async.Async.ofPurePromise (pure barrier)).block
+    let count ← server.state.atomically do return (← get).world.chunks.length
+    unless count == 0 do throw (IO.userError "unload request")
+    let badSite : Topology.GrothendieckSite Unit := ⟨⟨fun _ => false⟩⟩
+    let bad ← WorldServer.initServer badSite (.base (u := ()) "root") [] Topology.maximalSieve
+    let badQueue ← Std.CloseableChannel.new
+    let badWorker ← IO.asTask (WorldServer.runServer bad badQueue) (prio := .dedicated)
+    try
+      let rejected ← try
+        discard <| (WorldServer.requestChunk badQueue pos).block
+        pure false
+      catch _ => pure true
+      unless rejected do throw (IO.userError "generation failure was not returned")
+    finally
+      badQueue.close
+      discard <| IO.ofExcept badWorker.get
+  finally
+    queue.close
+    discard <| IO.ofExcept worker.get
+
 def main : IO UInt32 := do
   let mut failures := 0
   for (name, test) in cases do
     match test with
     | .ok _ => IO.println s!"PASS {name}"
     | .error e => IO.println s!"FAIL {name}: {e}"; failures := failures + 1
-  IO.println s!"{cases.length - failures}/{cases.length} groups passed"
+  try
+    worldServerTests
+    IO.println "PASS world server requests"
+  catch e =>
+    IO.println s!"FAIL world server requests: {e}"
+    failures := failures + 1
+  IO.println s!"{cases.length + 1 - failures}/{cases.length + 1} groups passed"
   pure (if failures == 0 then 0 else 1)

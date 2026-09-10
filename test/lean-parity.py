@@ -30,3 +30,15 @@ lean_chunks = subprocess.run(
 if len(haskell_chunks) != 3 or lean_chunks != haskell_chunks:
     raise AssertionError(f"Chunk format mismatch: Haskell={haskell_chunks!r}, Lean={lean_chunks!r}")
 print(f"{len(haskell_chunks)} Haskell/Lean chunk wire-format comparisons passed")
+
+haskell_nbt = subprocess.run(
+    ["runghc", "-isrc", "test/NBTParity.hs"],
+    cwd=root, check=True, text=True, capture_output=True,
+).stdout.splitlines()
+lean_nbt = subprocess.run(
+    ["lake", "env", "lean", "--run", "test/NBTParity.lean"],
+    cwd=root, check=True, text=True, capture_output=True,
+).stdout.splitlines()
+if len(haskell_nbt) != 3 or lean_nbt != haskell_nbt:
+    raise AssertionError(f"NBT format mismatch: Haskell={haskell_nbt!r}, Lean={lean_nbt!r}")
+print(f"{len(haskell_nbt)} Haskell/Lean NBT wire-format comparisons passed")

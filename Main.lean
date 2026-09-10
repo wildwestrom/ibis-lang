@@ -3,7 +3,7 @@ import Ibis
 open Ibis
 
 private def usage : String :=
-  "Usage: ibis parse FILE | elab FILE | check FILE | eval EXPR | type EXPR\n" ++
+  "Usage: ibis parse FILE | elab FILE | check FILE | eval EXPR | type EXPR | debugger [PORT]\n" ++
   "  parse  print the surface AST\n" ++
   "  elab   elaborate declarations to core syntax (does not type-check)\n" ++
   "  check  type-check supported definitions\n" ++
@@ -14,6 +14,11 @@ def main (args : List String) : IO UInt32 := do
   try
     let result ← match args with
       | ["--help"] | [] => pure (.ok usage)
+      | ["debugger"] => Debugger.startDebugger; pure (.ok "Debugger stopped.")
+      | ["debugger", port] => do
+        let some n := port.toNat? | pure (.error "invalid port")
+        if n == 0 || n > 65535 then pure (.error "invalid port")
+        else Debugger.startDebugger n.toUInt16; pure (.ok "Debugger stopped.")
       | ["eval", source] => pure do
         let t ← elaborate (← Parser.parseExpr source)
         let n ← normalize t

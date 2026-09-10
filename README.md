@@ -21,10 +21,13 @@ lake exe ibis check example/lean-core.ibis
 lake exe ibis eval '(fun x => x + 1) 41'
 lake exe ibis type '(fun A => fun x => x : (A : Type u) -> A -> A)'
 lake exe ibis elab example/lean-data.ibis
+lake exe ibis debugger 25545  # Minecraft 1.16.5 / protocol 754 prototype
 ```
 
 With GHC and Python installed, `python3 test/lean-parity.py` compares the two
-evaluators on shared working cases. See [LEAN_PORT.md](LEAN_PORT.md) for the
+evaluators on shared working cases and checks chunk/NBT byte parity.
+`python3 test/debugger-socket.py` tests the debugger over local TCP. The debugger
+currently streams placeholder stone platforms; it does not render section values. See [LEAN_PORT.md](LEAN_PORT.md) for the
 module mapping, syntax, deliberate corrections, and remaining limitations.
 The reference commit and upstream review workflow are recorded in [UPSTREAM.md](UPSTREAM.md).
 In particular, elaborating an inductive declaration does not certify it:

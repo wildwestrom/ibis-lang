@@ -13,13 +13,14 @@ Install the toolchain named in `lean-toolchain` using Elan, then run:
 lake build
 lake exe ibisTests
 python3 test/lean-parity.py  # optional: also requires GHC/runghc and Python 3
+python3 test/debugger-socket.py  # Python 3 and local TCP socket access
 ```
 
 `lake build` builds the library, CLI, and test executable. `ibisTests` runs the
 regressions; a parse failure fails a test rather than skipping its assertions.
 The parity script compares Lean with the original Haskell evaluator on 13
 working cases, plus three byte-for-byte chunk serialization fixtures (including
-signed bounds and 64-bit arrow IDs). It does not claim parity for unfinished or
+signed bounds and 64-bit arrow IDs), and three NBT fixtures covering every supported tag. It does not claim parity for unfinished or
 erroneous Haskell paths. It uses the original modules directly, avoiding the historical Cabal
 test suite's stale `Ibis.Syntax.*` imports and unavailable test dependencies.
 
@@ -27,6 +28,7 @@ Commands return nonzero on errors:
 
 | Command | Behavior |
 | --- | --- |
+| `lake exe ibis debugger [PORT]` | Run the Minecraft 1.16.5 prototype debugger (default port 25545) |
 | `lake exe ibis parse FILE` | Parse a full file and print its surface AST |
 | `lake exe ibis elab FILE` | Resolve names and desugar to core declarations |
 | `lake exe ibis check FILE` | Check supported definitions sequentially |
@@ -50,9 +52,11 @@ type-soundness proof.
 | Substitution and free-variable helpers | `Ibis/Core.lean` |
 | `Ibis.Typecheck.Unify.*` | `Ibis/Unify.lean` |
 | `Category.*`, `Ibis.Compiler.World`, `Ibis.Compiler.WorldGen` | `Ibis/Topology.lean` |
+| `Ibis.Compiler.WorldServer` | `Ibis/WorldServer.lean` |
+| `Ibis.Compiler.Debugger.*` | `Ibis/Debugger/{NBT,Protocol,Server}.lean` |
 | `Data.Serialization` | `Ibis/Serialization.lean` |
 | `Ibis.AST.CoAST`, `CFG` | `Ibis/Spatial.lean` |
-| Placeholder `app/Main.hs` | Functional CLI in `Main.lean` |
+| `app/Main.hs` | Interpreter and debugger CLI in `Main.lean` |
 
 The Lean port consolidates small modules rather than preserving Haskell module
 paths. Errors use `Except String`; closure values store an environment and body
@@ -143,7 +147,12 @@ inconsistent. Its regression tests explicitly cover:
 * World generation, chunk lookup, and local section restriction are executable.
   Zero-sized worlds are empty. Chunk serialization matches the upstream binary
   format, but arrow IDs and section payload bytes remain opaque; no world-to-wire
-  conversion exists. Upstream's STM server queue scaffold is deferred.
+  conversion exists. WorldServer requests run through a closeable channel; generated
+  chunks are cached and can be explicitly unloaded. The TCP debugger supports
+  protocol 754 status/ping, offline login, and movement-driven chunk streaming.
+  Rendering is a fixed stone platform, independent of section payloads. Keepalives,
+  authentication, automatic cache eviction, and block editing remain unimplemented.
+  Socket tests exercise the wire protocol; a real Minecraft client was not tested.
 * Spatial ASTs and CFGs are data structures only. Streaming, disk caches, a
   borrow-checking topos engine, and C99 lowering remain unimplemented.
 
