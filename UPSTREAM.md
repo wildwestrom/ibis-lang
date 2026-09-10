@@ -17,12 +17,15 @@ and chunk/NBT wire-format fixtures.
 
 ## Remotes
 
-- `upstream`: `https://github.com/megabytesofrem/ibis-lang.git`
-- `origin` currently points to the Haskell fork, `git@github.com:wildwestrom/ibis-lang.git`.
+- `upstream`: `https://github.com/megabytesofrem/ibis-lang.git`, the original
+  Haskell project.
+- `origin`: `git@github.com:wildwestrom/ibis-lang.git`, the user's fork and the
+  home of this Lean port. Push completed Lean port commits here.
 
-The proposed independent home is `wildwestrom/ibis-lean`; it has not been created
-as part of this setup. When it exists, rename the current `origin` to
-`haskell-fork` and add the new repository as `origin`.
+This fork tracks the Haskell project's development by porting each upstream
+change into Lean as it arrives. Keep these repository names and remotes;
+there is no planned move to a separate `ibis-lean` repository. The retained
+Haskell snapshot serves as a reference for translation and parity tests.
 
 ## Following changes with Jujutsu
 
