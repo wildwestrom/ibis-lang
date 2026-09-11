@@ -33,15 +33,47 @@ gives exactly the existing `restrictSection` result. Consequently, equal paths
 act identically on every section. This provides a lawful mathematical model
 without changing the runtime's representation or its structural comparisons.
 
+## Memory-region specification model
+
+`IbisProofs/Regions.lean` tests the paper's proposed interpretation of memory
+regions as open sets and morphisms as inclusions. It uses sets of addresses,
+which can be viewed as opens in the discrete topology. An address may have its
+own cell type; a section assigns a value at every address in its region.
+Mathlib supplies the category whose arrows are subset inclusions, and the
+`presheaf` definition proves the required functor laws for restriction.
+
+The model establishes:
+
+- Restriction follows actual subset containment and preserves identity/composition.
+- Two sections agreeing on their intersection glue uniquely on their union.
+- Supplying values on the larger region permits extension while preserving all
+  original values (`restrict_extendWith`).
+- Extension need not be unique: two Boolean-valued sections can agree at `false`
+  and differ at the newly added address `true`.
+- Extension need not exist: a cell family with `Unit` at `false` and `Empty` at
+  `true` has a section on `{false}` but none on the whole address space.
+
+Thus the presheaf laws alone cannot justify the paper's proposed automatic
+extension operation. The failure example uses an uninhabited cell type; it does
+not say ordinary Boolean-valued memory cannot be extended. The fill construction
+states sufficient additional data explicitly. These are specification results,
+not a proof that a particular Ibis program exhibits either behavior.
+
+The paper's restriction formula at line 308 reverses its earlier contravariant
+convention: an inclusion `U ⊆ V` restricts sections from `V` to `U`. This model
+uses that contravariant direction. The original paper is preserved unchanged.
+
 ## Scope
 
-These results do not establish a Grothendieck topology, a sheaf, global gluing,
-memory safety, or the impossibility of modules. Finite candidate filtering does
+The runtime/path results do not establish a Grothendieck topology, a sheaf,
+global gluing, memory safety, or the impossibility of modules. The region model
+proves binary gluing, but is not yet connected to runtime sections and does not
+package an arbitrary-cover sheaf theorem. Finite candidate filtering does
 not establish that the candidates cover an object. The path model describes
 finite paths over an arbitrary object type, which need not be finite; it does
 not model infinite individual syntax trees.
 
-The next mathematical step is to define a specific covering rule on the path
-category and prove mathlib's Grothendieck topology axioms for that rule. Such a
-rule must be motivated by Ibis's intended semantics rather than chosen merely
-because its axioms are easy to prove.
+Next steps are to package union covers and arbitrary compatible families using
+mathlib's topology/sheaf interfaces, and specify how Ibis's runtime regions and
+sections map into this model. Allocation, lifetimes, mutation, and memory safety
+require further operational definitions. The model alone does not supply them.

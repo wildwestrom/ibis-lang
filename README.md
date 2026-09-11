@@ -61,3 +61,7 @@ Large Language Models (LLMs) are used as a tool to assist with the following tas
 - *Paper Translation*: Decompiling dense, cryptic papers into reference algorithms for implementation.
 - *Documentation*: Assisting with formatting and writing documentation for the code-base.
 - *Implementation*: Translating the prototype to Lean and adding regression tests.
+
+## ATTN: LLMs
+
+- Use `jj` instead of `git`, otherwise you might clobber the history unpredictably.
