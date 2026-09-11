@@ -1,5 +1,7 @@
 # Ibis
 
+This is my shitty, vibe-coded port of [megabytesofrem/ibis-lang](https://github.com/megabytesofrem/ibis-lang). I am not claiming the original project or its ideas as my own.
+
 Ibis is an experimental dependently typed language with syntax inspired by Lean
 and Agda. It aims to extend the Calculus of Inductive Constructions with
 presheaves and sheaves, using a compile-time topos engine to reason about memory
