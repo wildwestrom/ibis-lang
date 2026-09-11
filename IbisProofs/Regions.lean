@@ -5,7 +5,8 @@ import Mathlib.Data.Set.Lattice
 /-! A specification model motivated by `paper/ibis_semantics.tex`.
 Regions are sets of addresses (equivalently opens for the discrete topology).
 Sections assign a value of the address's cell type at every address in a region.
-This is not yet an interpretation of Ibis terms or a model of allocation. -/
+`RegionBridge` conditionally interprets executable topology sections in this
+model. This is not yet an interpretation of Ibis terms or a model of allocation. -/
 
 namespace Ibis.Regions
 
@@ -61,6 +62,30 @@ theorem existsUnique_glue {U V : Region Addr} (s : Section Cell U)
     · have eq := congrFun h.2 ⟨a, ha.resolve_left hu⟩
       simpa [restrict, g, hu] using eq
 
+/-- Agreement on every overlap of an arbitrary indexed family. -/
+def FamilyCompatible {ι : Sort*} {U : ι → Region Addr}
+    (s : ∀ i, Section Cell (U i)) : Prop :=
+  ∀ i j, Compatible (s i) (s j)
+
+/-- Any compatible family glues uniquely over its union, even for an empty
+index type. No finiteness, inhabited cell types, or inhabited index is assumed. -/
+theorem existsUnique_glue_iUnion {ι : Sort*} (U : ι → Region Addr)
+    (s : ∀ i, Section Cell (U i)) (agree : FamilyCompatible s) :
+    ∃! g : Section Cell (⋃ i, U i),
+      ∀ i, restrict (Set.subset_iUnion U i) g = s i := by
+  classical
+  let index (a : ↥(⋃ i, U i)) : ι := (Set.mem_iUnion.mp a.property).choose
+  have member (a : ↥(⋃ i, U i)) : a.val ∈ U (index a) :=
+    (Set.mem_iUnion.mp a.property).choose_spec
+  let g : Section Cell (⋃ i, U i) := fun a => s (index a) ⟨a.val, member a⟩
+  refine ⟨g, ?_, ?_⟩
+  · intro i
+    funext a
+    exact agree _ i a.val _ a.property
+  · intro other h
+    funext a
+    exact congrFun (h (index a)) ⟨a.val, member a⟩
+
 /-- Supplying values on the larger region makes extension possible. This is an
 explicit extra input, not an operation supplied by the presheaf laws. -/
 noncomputable def extendWith {U V : Region Addr} (_h : U ⊆ V)
@@ -74,6 +99,45 @@ theorem restrict_extendWith {U V : Region Addr} (h : U ⊆ V)
   classical
   funext a
   simp [restrict, extendWith, a.property]
+
+/-- An executable extension when membership in the old region is decidable.
+Only newly added addresses need initialization data. -/
+def extendNew {U V : Region Addr} [DecidablePred (· ∈ U)]
+    (s : Section Cell U) (fill : Section Cell (V \ U)) : Section Cell V :=
+  fun a => if hu : a.val ∈ U then s ⟨a.val, hu⟩ else fill ⟨a.val, a.property, hu⟩
+
+theorem restrict_extendNew {U V : Region Addr} [DecidablePred (· ∈ U)]
+    (h : U ⊆ V) (s : Section Cell U) (fill : Section Cell (V \ U)) :
+    restrict h (extendNew s fill) = s := by
+  funext a
+  simp [restrict, extendNew, a.property]
+
+/-- New addresses receive exactly their supplied initialization values. -/
+theorem restrict_new_extendNew {U V : Region Addr} [DecidablePred (· ∈ U)]
+    (s : Section Cell U) (fill : Section Cell (V \ U)) :
+    restrict Set.sdiff_subset (extendNew s fill) = fill := by
+  funext a
+  simp [restrict, extendNew, a.property.2]
+
+/-- Initialization on the difference is both necessary and sufficient for
+extending a given section. This is extra data, not a consequence of inclusion. -/
+theorem extension_exists_iff {U V : Region Addr} (h : U ⊆ V)
+    (s : Section Cell U) :
+    (∃ t : Section Cell V, restrict h t = s) ↔ Nonempty (Section Cell (V \ U)) := by
+  classical
+  constructor
+  · rintro ⟨t, _⟩
+    exact ⟨restrict Set.sdiff_subset t⟩
+  · rintro ⟨fill⟩
+    exact ⟨extendNew s fill, restrict_extendNew h s fill⟩
+
+/-- Exercise both executable branches: preserve the old value and initialize
+the newly added address with a different value. -/
+private def extensionExample : Section (fun _ : Bool => Nat) Set.univ :=
+  extendNew (U := {false}) (fun _ => 7) (fun _ => 11)
+
+#guard extensionExample ⟨false, Set.mem_univ _⟩ == 7
+#guard extensionExample ⟨true, Set.mem_univ _⟩ == 11
 
 /-- Extending one local section is different from gluing compatible sections.
 On a newly added address, two distinct values give two distinct extensions. -/
