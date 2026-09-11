@@ -35,11 +35,12 @@ private def sendPacket (sock : TCP.Socket.Client) (id : UInt32) (payload : ByteA
 private def streamChunks (sock : TCP.Socket.Client) (queue : WorldServer.Queue Obj c Val)
     (center : ChunkPos) (loaded : List ChunkPos) (resendCenter := false) : Async (List ChunkPos) := do
   let desired := chunkBuffer center
+  let renderedY := (center.y.toNat - 1).toUInt32
   for pos in desired do
-    if !loaded.contains pos || (resendCenter && pos.y == center.y) then
+    if !loaded.contains pos || (resendCenter && pos.y == renderedY) then
       let chunk ← WorldServer.requestChunk queue pos
-      -- Request all nearby sections, but render only the center section per column.
-      if pos.y == center.y then
+      -- Render the solid section below the player's feet, clamped at bedrock.
+      if pos.y == renderedY then
         sendPacket sock 0x20 (← checked (encodeWorldChunk chunk))
   return desired
 
@@ -76,7 +77,7 @@ private def handleLogin (sock : TCP.Socket.Client) (server : WorldServer.Server 
   let confirm ← readPacket sock
   let (teleport, _) ← checked (decodeVarInt confirm.payload)
   if confirm.id != 0 || teleport != 1 then throw (IO.userError "expected teleport confirmation")
-  let initial : ChunkPos := ⟨0, 3, 0⟩
+  let initial : ChunkPos := ⟨0, 4, 0⟩
   let initialLoaded ← streamChunks sock queue initial []
   withKeepAlives sock do
     let mut center := initial
@@ -92,6 +93,8 @@ private def handleLogin (sock : TCP.Socket.Client) (server : WorldServer.Server 
           sendPacket sock 0x40 (buildVarInt next.x ++ buildVarInt next.z)
           loaded ← streamChunks sock queue next loaded resendCenter
       | .chatReceived text => sendPacket sock 0x0e (systemChatMessage text)
+      | .unknown packet =>
+        IO.println s!"[Ibis Debugger] Unrecognised packet: ID=0x{String.ofList (Nat.toDigits 16 packet.id.toNat)}, data={packet.payload.data}"
       | _ => pure ()
 
 private def handleConnection (sock : TCP.Socket.Client) (server : WorldServer.Server Obj c Val)

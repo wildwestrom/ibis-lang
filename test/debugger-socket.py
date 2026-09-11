@@ -117,14 +117,14 @@ try:
 
     with login() as first, login() as second:
         for sock in [first, second]:
-            send(sock, 0x11, struct.pack(">ddd?", 16, 48, 0, True))
+            send(sock, 0x11, struct.pack(">ddd?", 16, 64, 0, True))
             assert packet(sock) == (0x40, varint(1) + varint(0))
             assert chunks(sock, 3) == {(2, z) for z in [-1, 0, 1]}
-        send(first, 0x12, struct.pack(">dddff?", -0.5, 48, 0, 0, 0, True))
+        send(first, 0x12, struct.pack(">dddff?", -0.5, 64, 0, 0, 0, True))
         assert packet(first) == (0x40, varint(-1) + varint(0))
         assert chunks(first, 6) == {(x, z) for x in [-2, -1] for z in [-1, 0, 1]}
-        # Vertical-only movement must resend the newly visible center even if prefetched.
-        for world_y, section_y in [(64, 4), (80, 5), (-1, 0), (255, 15), (512, 15)]:
+        # Resend the floor below the player's section even if already prefetched.
+        for world_y, section_y in [(80, 4), (64, 3), (16, 0), (-1, 0), (255, 14), (512, 14)]:
             send(first, 0x11, struct.pack(">ddd?", -0.5, world_y, 0, True))
             if world_y != 512:  # Still in the clamped top section: no duplicate stream.
                 assert packet(first) == (0x40, varint(-1) + varint(0))

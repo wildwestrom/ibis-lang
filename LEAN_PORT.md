@@ -151,7 +151,8 @@ inconsistent. Its regression tests explicitly cover:
   chunks are cached and can be explicitly unloaded. The TCP debugger supports
   protocol 754 status/ping, offline login, escaped system chat, fifteen-second
   keepalives, and horizontal/vertical movement-driven chunk streaming. The view
-  requests nearby sections within Y=0–15 and renders the center section as stone,
+  requests nearby sections within Y=0–15 and renders the section below the player
+  (clamped at section zero) as stone,
   independent of section payloads. Multi-section column rendering, authentication,
   automatic cache eviction, and block editing remain unimplemented.
   Socket tests exercise the wire protocol; a real Minecraft client was not tested.

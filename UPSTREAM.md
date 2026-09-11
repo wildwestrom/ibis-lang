@@ -5,9 +5,9 @@ The Lean implementation follows the behavior of
 
 ## Baseline
 
-- Reference commit: `b721f1ad046102e3864add68a7582e1c9416c281`
-- Commit subject: `server: Fixed vertical chunk generation in debugger`
-- Last checked against `upstream/main`: 2026-09-10
+- Reference commit: `85409ee64c0d228fbfa74d9e553e15163633ba16`
+- Commit subject: `Update README`
+- Last checked against `upstream/main`: 2026-09-11
 - The Haskell files in `src/` match this commit.
 
 This identifies the source used for the port, not a claim of complete behavioral
@@ -31,7 +31,7 @@ Haskell snapshot serves as a reference for translation and parity tests.
 
 ```sh
 jj git fetch --remote upstream
-jj log -r 'b721f1ad046102e3864add68a7582e1c9416c281..main@upstream'
+jj log -r '85409ee64c0d228fbfa74d9e553e15163633ba16..main@upstream'
 ```
 
 Keep `main@upstream` untracked in Jujutsu so fetching Haskell changes does not
@@ -45,7 +45,25 @@ after running `lake build`, `lake exe ibisTests`, and
 alone does not advance the port's baseline. Upstream commits should not be
 automatically merged into the Lean implementation.
 
-## Ported through `b721f1a`
+## Ported through `85409ee6`
+
+Ported the debugger changes bundled with upstream's `Update README` commit.
+Login now centers the requested view at the player's section 4 and renders
+section 3 beneath their feet. Movement likewise renders the section below the
+player, clamped to section zero at bedrock. Vertical changes still resend the
+visible floor even when prefetched, preserving the Lean correction. Unknown
+or malformed play packets are logged with hexadecimal IDs and payload bytes.
+The retained Haskell source matches this baseline; README architecture and disk
+cache plans are reflected without replacing the fork's ownership statement.
+
+Socket regressions cover horizontal movement at spawn height, upward/downward
+floor changes, and bedrock/ceiling bounds. Disk caching remains an upstream TODO.
+
+Validation: `lake build`, `lake exe ibisTests` (23 groups),
+`python3 test/lean-parity.py` (19 comparisons), and
+`python3 test/debugger-socket.py` passed. No real Minecraft client was tested.
+
+## Previously ported through `b721f1a`
 
 Ported `fe7c166` (protocol cleanup, chat, keepalives) and `b721f1a` (vertical
 sections). The Haskell source, executable entry point, and Cabal file match this

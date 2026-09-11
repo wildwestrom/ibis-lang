@@ -35,7 +35,15 @@ The reference commit and upstream review workflow are recorded in [UPSTREAM.md](
 In particular, elaborating an inductive declaration does not certify it:
 inductive checking, tactics, full unification, and C99 generation remain unfinished.
 
+The prototype architecture consists of WorldServer, which serves and caches
+topology chunks; WorldGen, which generates them on demand; and a Minecraft
+1.16.5 debugger for exploring them in 3D. The Lean debugger currently renders
+placeholder stone floors below the player's section.
+
 ## Current TODOs
+
+- Wire up WorldServer to persist chunks in an Anvil-like format.
+
 - Fully implement Millers Higher Order Pattern Unification algorithm (`Ibis.Typecheck.Unify.Solver`)
   for solving unification problems in the elaborator.
 
