@@ -13,7 +13,8 @@ be limited to C99.
 ## Lean 4 port
 
 A standalone Lean implementation lives in `Ibis/`, with a CLI in `Main.lean`.
-It uses Lean's standard library and the version pinned in `lean-toolchain`.
+The runtime uses Lean's standard library and the version pinned in `lean-toolchain`.
+The separate `IbisProofs` library uses mathlib v4.33.1 and is checked by `lake build`.
 The original Haskell implementation remains in `src/` for comparison.
 
 ```sh
@@ -25,6 +26,11 @@ lake exe ibis type '(fun A => fun x => x : (A : Type u) -> A -> A)'
 lake exe ibis elab example/lean-data.ibis
 lake exe ibis debugger 25545  # Minecraft 1.16.5 / protocol 754 prototype
 ```
+
+The first build downloads mathlib and its dependencies. To check only the formal
+proofs, run `lake build IbisProofs`. See [PROOFS.md](PROOFS.md) for the guarantees,
+the raw-arrow associativity counterexample, and the semantics-preserving bridge
+to mathlib's path category.
 
 With GHC and Python installed, `python3 test/lean-parity.py` compares the two
 evaluators on shared working cases and checks chunk/NBT byte parity.
