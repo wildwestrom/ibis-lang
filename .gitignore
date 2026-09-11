@@ -34,4 +34,16 @@ cabal.project.local~
 .lake/
 
 ### Claude Code ###
-.claude/
+# Ignore the *contents* of .claude/, not the directory. `.claude/` with a
+# trailing slash excludes the directory itself, and git refuses to re-include
+# anything beneath an excluded directory — which would make every negation
+# below a silent no-op.
+.claude/*
+__pycache__/
+
+# Shared project tooling, deliberately tracked:
+!.claude/context-digest.py
+!.claude/settings.json
+
+# Still ignored: settings.local.json (personal permission grants),
+# plus anything else Claude Code drops in here.
