@@ -32,3 +32,6 @@ cabal.project.local~
 
 ### Lean 4 ###
 .lake/
+
+### Claude Code ###
+.claude/
