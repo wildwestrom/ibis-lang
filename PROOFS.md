@@ -69,6 +69,28 @@ not say ordinary Boolean-valued memory cannot be extended. The fill construction
 states sufficient additional data explicitly. These are specification results,
 not a proof that a particular Ibis program exhibits either behavior.
 
+### Constant cell types
+
+The model above allows a different type at each address, but the checker's
+`sect a u` carries one type for the whole region, so those counterexamples do
+not transfer to it directly. Three corollaries restate the obligations for a
+constant cell family:
+
+- `const_extension_exists_iff`: extension along `U ⊆ V` is possible exactly
+  when `V \ U` is empty or the cell type is inhabited. This is the precise side
+  condition absent from the `ext` rule.
+- `const_extension_fails_empty`: at an uninhabited cell type, a cover that adds
+  an address admits no extension. `sect Empty u` is a well-formed Ibis type, so
+  this case is reachable rather than an artifact of dependent cells.
+- `const_extension_not_unique`: two distinct cell values give two extensions of
+  the same section, so even when extension exists it is not determined.
+
+`Ibis/Check.lean` infers `ext a u v p s : sect a v` from `s : sect a u` and
+`p : Cover u v`, supplying no initialization data. Taken with the direction of
+the neighbouring `res` rule, under this model that rule has no justification at
+an uninhabited cell type and no unique result otherwise. This is a statement
+about the model, not a derivation of `False` from the implementation.
+
 The paper's “Restriction Maps” formula reverses its earlier contravariant
 convention: an inclusion `U ⊆ V` restricts sections from `V` to `U`. This model
 uses that contravariant direction. The original paper is preserved unchanged.
@@ -115,5 +137,7 @@ not model infinite individual syntax trees.
 Next steps are to obtain region/inclusion evidence from actual declarations and
 interpret checked `Core` terms and evaluator values. In particular, `Core.ext`
 currently has no initialization argument corresponding to `extendNew`; its
-typing rule and evaluation are not certified by these results. Allocation,
+typing rule and evaluation are not certified by these results. The constant-cell
+corollaries state the side condition that rule would need, but connecting them
+to the checker still requires an interpretation of `Site`, `Cover`, and `sect`. Allocation,
 lifetimes, mutation, and memory safety require further operational definitions.

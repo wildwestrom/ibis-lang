@@ -170,4 +170,60 @@ theorem extension_can_fail :
   · rintro ⟨s⟩
     exact (s ⟨true, Set.mem_univ _⟩).elim
 
+/-! ### Constant cell types
+
+The checker's `sect a u` carries a single type for the whole region, so the
+dependent counterexamples above do not transfer to it directly. These
+corollaries restate the same obligations for a constant cell family, which is
+the shape `Ibis/Check.lean` actually elaborates. -/
+
+/-- For a constant cell type, extension along `U ⊆ V` is possible exactly when
+no address is added or the cell type is inhabited. This is the precise side
+condition missing from the `ext` rule. -/
+theorem const_extension_exists_iff {A : Type} {U V : Region Addr} (h : U ⊆ V)
+    (s : Section (fun _ : Addr => A) U) :
+    (∃ t : Section (fun _ : Addr => A) V, restrict h t = s) ↔
+      (V \ U = ∅ ∨ Nonempty A) := by
+  rw [extension_exists_iff h s]
+  constructor
+  · intro hfill
+    by_cases he : V \ U = ∅
+    · exact Or.inl he
+    · obtain ⟨a, ha⟩ := Set.nonempty_iff_ne_empty.mpr he
+      exact Or.inr (hfill.elim fun fill => ⟨fill ⟨a, ha⟩⟩)
+  · rintro (he | hA)
+    · exact ⟨fun x => (Set.eq_empty_iff_forall_notMem.mp he x.val x.property).elim⟩
+    · exact hA.elim fun a => ⟨fun _ => a⟩
+
+/-- At an uninhabited cell type, a cover that adds an address admits no
+extension at all. `sect Empty u` is a well-formed Ibis type, so this is a
+reachable case, not a pathology of the dependent model. -/
+theorem const_extension_fails_empty {U V : Region Addr} (h : U ⊆ V)
+    (hne : (V \ U).Nonempty) (s : Section (fun _ : Addr => Empty) U) :
+    ¬ ∃ t : Section (fun _ : Addr => Empty) V, restrict h t = s := by
+  rw [const_extension_exists_iff h s]
+  rintro (he | hE)
+  · exact (Set.nonempty_iff_ne_empty.mp hne) he
+  · exact hE.elim fun e => e.elim
+
+/-- Even when extension exists, it is not determined: two distinct cell values
+give two extensions of the same section. -/
+theorem const_extension_not_unique {A : Type} {U V : Region Addr} (h : U ⊆ V)
+    {a b : A} (hab : a ≠ b) (hne : (V \ U).Nonempty)
+    (s : Section (fun _ : Addr => A) U) :
+    ∃ t₁ t₂ : Section (fun _ : Addr => A) V,
+      restrict h t₁ = s ∧ restrict h t₂ = s ∧ t₁ ≠ t₂ := by
+  classical
+  obtain ⟨x, hxV, hxU⟩ := hne
+  refine ⟨fun y => if hy : y.val ∈ U then s ⟨y.val, hy⟩ else a,
+          fun y => if hy : y.val ∈ U then s ⟨y.val, hy⟩ else b, ?_, ?_, ?_⟩
+  · funext y
+    simp [restrict, y.property]
+  · funext y
+    simp [restrict, y.property]
+  · intro hcon
+    have collide := congrFun hcon ⟨x, hxV⟩
+    simp only [hxU, dif_neg, not_false_iff] at collide
+    exact hab collide
+
 end Ibis.Regions

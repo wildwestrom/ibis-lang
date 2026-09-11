@@ -35,7 +35,7 @@ conditional bridge can certify its uses of restriction.
 | --- | --- | --- |
 | Checked language semantics | Define declarative typing and an interpretation of supported `Core`/`Value` terms; prove checker soundness and evaluation preservation, starting with `res`/`ext`. The topology section datatype is not the evaluator's value datatype. | Paper, “The MLTT based type system”; `Ibis/Check.lean`, `Ibis/Eval.lean` |
 | Runtime inclusion validation | Obtain subset witnesses from actual site declarations; reject invalid inclusions before execution. Conditional proofs alone do not enforce this. | Paper, “Restriction Maps”; `Ibis/Topology.lean: Arrow.inclusion` |
-| Extension semantics | Choose explicit initialization/allocation data or a restricted section model; connect it to typing and evaluation. Prove preservation of old values and initialization of new addresses. | Paper, “Kan Extensions”; `Ibis/Check.lean: infer` |
+| Extension semantics | Choose explicit initialization/allocation data or a restricted section model; connect it to typing and evaluation. Prove preservation of old values and initialization of new addresses. The side condition itself is now stated for constant cell types (`const_extension_exists_iff`); what remains is interpreting `Site`, `Cover`, and `sect` so it can be applied to the `ext` rule. | Paper, “Kan Extensions”; `Ibis/Check.lean: infer` |
 | Lawful runtime sites | Connect runtime coverage to the now-proved region topology. Raw `SiteTopology.isCover` is only a Boolean predicate. | Paper, “Grothendieck Topology” |
 | Runtime gluing | Connect runtime sections and overlap checks to construction of a global section. The specification sheaf is proved; runtime `glue` still only returns a pair. | Paper, “Glueing axiom” |
 | Finite materialization | Prove supplied candidates cover the intended region under explicit hypotheses; establish what loading/unloading preserves. Filtering correctness is insufficient. | Paper, “Chunking the topos” |
@@ -50,6 +50,9 @@ conditional bridge can certify its uses of restriction.
   `U ⊆ V` induces `F(V) → F(U)`.
 - A morphism alone does not supply a section extension. The region model proves
   both nonuniqueness and possible failure; the failure uses an empty cell type.
+  Restated for constant cell types, matching the checker's non-dependent `sect`:
+  extension along `U ⊆ V` requires `V \ U = ∅` or an inhabited cell type, and is
+  non-unique whenever the cell type has two values and the cover adds an address.
 - The displayed dependent application rule needs codomain substitution
   `B[x/a]` with an unambiguous binder; the implementation applies a closure.
 - Raw arrow syntax is not associative. The existing path interpretation proves
@@ -71,3 +74,8 @@ below; keep the remaining obligations open until their completion conditions hol
   reports only `propext`, `Classical.choice`, and `Quot.sound` where needed;
   `extendNew` itself is axiom-free. No `sorry`, new axioms, or `native_decide`
   were introduced. The README, original paper, and runtime modules are unchanged.
+- Constant-cell corollaries: `lake build IbisProofs` and `lake build` pass
+  without warnings; `lake exe ibisTests` passes all 23 groups. The project now
+  has 37 theorems; `#print axioms` on the three new results reports only
+  `propext`, `Classical.choice`, and `Quot.sound`. Runtime modules are unchanged,
+  so this records a specification gap in `Ibis/Check.lean` rather than fixing it.
